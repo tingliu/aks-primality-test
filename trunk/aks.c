@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 #include <gmp.h>
 
 #define COMPOSITE 0
@@ -56,6 +57,24 @@ typedef struct {
 
 
 
+/* /\* For debug *\/ */
+/* void db_print_coef (Polynomial* p_poly) */
+/* { */
+/*   unsigned int i; */
+/*   for (i = 0; i <= p_poly->deg; i++) { */
+/*     printf("%d ", mpz_get_si(p_poly->coef[i])); */
+/*   } */
+/*   printf("\n"); */
+/* } */
+
+/* void db_print_var (mpz_t n) */
+/* { */
+/*   printf("%d\n", mpz_get_si(n)); */
+/* } */
+/* /\* ~For debug *\/ */
+
+
+
 void initialize_polynomial (Polynomial** pp_poly, unsigned int deg)
 {
   (*pp_poly) = (Polynomial*)malloc(sizeof(Polynomial));
@@ -85,10 +104,12 @@ void destroy_polynomial (Polynomial** pp_poly)
 
 void clone_polynomial(Polynomial** pp_poly_cloned, Polynomial* p_poly)
 {
-  initialize_polynomial(pp_poly_cloned, p_poly->deg);
+  (*pp_poly_cloned) = (Polynomial*)malloc(sizeof(Polynomial));
+  (*pp_poly_cloned)->coef = (mpz_t*)malloc((p_poly->deg + 1) * sizeof(mpz_t));
+  (*pp_poly_cloned)->deg = p_poly->deg;
   unsigned int i;
   for (i = 0; i <= p_poly->deg; i++) {
-    mpz_set((*pp_poly_cloned)->coef[i], p_poly->coef[i]);
+    mpz_init_set((*pp_poly_cloned)->coef[i], p_poly->coef[i]);
   }
 }
 
@@ -103,6 +124,10 @@ void compact_polynomial (Polynomial* p_poly)
     }
   }
   if (i < p_poly->deg) {
+    unsigned int j;
+    for (j = i + 1; j <= p_poly->deg; j++) {
+      mpz_clear(p_poly->coef[j]);
+    }
     p_poly->coef = (mpz_t*)realloc(p_poly->coef, sizeof(mpz_t) * (i + 1));
     p_poly->deg = i;
   }
@@ -160,10 +185,21 @@ void set_polynomial_coef (Polynomial* p_poly, unsigned int order,
 void set_polynomial_coef_si (Polynomial* p_poly, unsigned int order, 
 			     int coef_si)
 {
-  mpz_t coef;
-  mpz_init_set_si(coef, coef_si);
-  set_polynomial_coef(p_poly, order, &coef);
-  mpz_clear(coef);
+  /* mpz_t coef; */
+  /* mpz_init_set_si(coef, coef_si); */
+  /* set_polynomial_coef(p_poly, order, &coef); */
+  /* mpz_clear(coef); */
+  if (order <= p_poly->deg) {
+    mpz_set_si(p_poly->coef[order], coef_si);
+    return;
+  }
+  p_poly->coef = (mpz_t*)realloc(p_poly->coef, sizeof(mpz_t) * (order + 1));
+  unsigned int i;
+  for (i = p_poly->deg + 1; i < order; i++) {
+    mpz_init_set_ui(p_poly->coef[i], 0);
+  }
+  mpz_init_set_si(p_poly->coef[order], coef_si);
+  p_poly->deg = order;
 }
 
 
@@ -223,10 +259,12 @@ void polynomial_modular_power (Polynomial** pp_poly_res, Polynomial* p_poly_base
   unsigned int i;
   for (i = mpz_sizeinbase(n, 2) + 1; i> 0; ) {
     clone_polynomial(&p_poly_temp, (*pp_poly_res));
+    destroy_polynomial(pp_poly_res);
     polynomial_modular_multiplication(pp_poly_res, p_poly_temp, p_poly_temp, n, r);
     destroy_polynomial(&p_poly_temp);
     if (mpz_tstbit(n, --i) == 1) {
       clone_polynomial(&p_poly_temp, (*pp_poly_res));
+      destroy_polynomial(pp_poly_res);
       polynomial_modular_multiplication(pp_poly_res, p_poly_temp, p_poly_base, n, r);
       destroy_polynomial(&p_poly_temp);
     }
@@ -237,11 +275,26 @@ void polynomial_modular_power (Polynomial** pp_poly_res, Polynomial* p_poly_base
 
 int aks (mpz_t n)
 {
+  /* /\* For debug *\/ */
+  /* clock_t start1 = clock(); */
+  /* /\* ~For debug *\/ */
+
   /* Step 1: perfect power */
   if (mpz_perfect_power_p(n)) {
     return COMPOSITE;
   }
+
+  /* /\* For debug *\/ */
+  /* printf("\nStep 1 perfect power takes %f\n", */
+  /* 	 (double)(clock() - start1) / (double)CLOCKS_PER_SEC); */
+  /* /\* ~For debug *\/ */
+
   /* Step 2: witness search */
+
+  /* /\* For debug *\/ */
+  /* clock_t start2 = clock(); */
+  /* /\* ~For debug *\/ */
+
   mpz_t r;
   mpz_init_set_ui(r, 2);
   unsigned int r_ui = 2;
@@ -293,7 +346,19 @@ int aks (mpz_t n)
     mpz_clear(logn);
     return PRIME;
   }
+
+  /* /\* For debug *\/ */
+  /* gmp_printf("r = %Zd\n", r); */
+  /* printf("Step 2 witness search takes %f\n", */
+  /* 	 (double)(clock() - start2) / (double)CLOCKS_PER_SEC); */
+  /* /\* ~For debug *\/ */
+
   /* Step 3: polynomial check */
+
+  /* /\* For debug *\/ */
+  /* clock_t start3 = clock(); */
+  /* /\* ~For debug *\/ */
+
   mpz_t amax;			/* Upper bound of a = 2 * sqrt(r) * logn */
   mpz_init_set_ui(amax, 2);
   mpz_t sqrtr;
@@ -309,6 +374,7 @@ int aks (mpz_t n)
   unsigned int power_right_ui = mpz_get_ui(power_right);
   mpz_clear(r);
   mpz_clear(power_right);
+
   Polynomial* p_poly_right = NULL;
   Polynomial* p_poly_left = NULL; 
   Polynomial* p_poly_left_base = NULL;
@@ -334,9 +400,20 @@ int aks (mpz_t n)
       mpz_clear(a_mod_n);
       return COMPOSITE;
     }
+    
+    /* /\* For debug *\/ */
+    /* db_print_coef(p_poly_left); */
+    /* /\* ~For debug *\/ */
+
     destroy_polynomial(&p_poly_left);
     mpz_add_ui(a, a, 1);
   }
+
+  /* /\* For debug *\/ */
+  /* printf("Step 3 polynomial check takes %f\n", */
+  /* 	 (double)(clock() - start3) / (double)CLOCKS_PER_SEC); */
+  /* /\* ~For debug *\/ */
+
   /* Step 4: after all... */
   destroy_polynomial(&p_poly_right);
   destroy_polynomial(&p_poly_left_base);
