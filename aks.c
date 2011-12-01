@@ -79,7 +79,6 @@ void destroy_polynomial (Polynomial** pp_poly)
   free((*pp_poly)->coef);
   (*pp_poly)->deg = 0;
   free(*pp_poly);
-  (*pp_poly) = NULL;
 }
 
 
@@ -324,9 +323,9 @@ int aks (mpz_t n)
   unsigned int power_right_ui = mpz_get_ui(power_right);
   mpz_clear(r);
   mpz_clear(power_right);
-  Polynomial* p_poly_right = NULL;
-  Polynomial* p_poly_left = NULL; 
-  Polynomial* p_poly_left_base = NULL;
+  Polynomial* p_poly_right;
+  Polynomial* p_poly_left; 
+  Polynomial* p_poly_left_base;
   initialize_polynomial(&p_poly_right, power_right_ui);
   set_polynomial_coef_si(p_poly_right, power_right_ui, 1); /* X ^ (n % r) */
   initialize_polynomial(&p_poly_left_base, 1);
