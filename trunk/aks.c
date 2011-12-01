@@ -6,6 +6,11 @@
 #define COMPOSITE 0
 #define PRIME 1
 
+#define USE_PARALLEL
+#ifdef USE_PARALLEL
+#define THREAD_NUM 2
+#endif
+
 typedef struct {
   mpz_t table;
   unsigned int size;		/* Bit set 1: composite */
@@ -323,6 +328,7 @@ int aks (mpz_t n)
   unsigned int power_right_ui = mpz_get_ui(power_right);
   mpz_clear(r);
   mpz_clear(power_right);
+#ifndef USE_PARALLEL
   Polynomial* p_poly_right;
   Polynomial* p_poly_left; 
   Polynomial* p_poly_left_base;
@@ -351,12 +357,65 @@ int aks (mpz_t n)
     destroy_polynomial(&p_poly_left);
     mpz_add_ui(a, a, 1);
   }
-  /* Step 4: after all... */
   destroy_polynomial(&p_poly_right);
   destroy_polynomial(&p_poly_left_base);
   mpz_clear(amax);
   mpz_clear(a);
   mpz_clear(a_mod_n);
+#else
+  mpz_t b;
+  mpz_init(b);
+  mpz_t bmax;
+  mpz_init(bmax);
+  mpz_cdiv_q_ui(bmax, amax, THREAD_NUM);
+  mpz_sub_ui(bmax, bmax, 1);
+  while (mpz_cmp(b, bmax) <= 0) {
+    unsigned int is_return = 0;
+    unsigned int c;
+#pragma omp parallel private(c) shared(is_return)
+    for (c = 0; c < THREAD_NUM; c++) {
+      mpz_t a;
+      mpz_init(a);
+      mpz_mul_ui(a, b, THREAD_NUM);
+      mpz_add_ui(a, a, c);		/* a = b * THREAD_NUM + c */
+      if (mpz_cmp(a, amax) <= 0) {
+	mpz_t a_mod_n;
+	mpz_init(a_mod_n);
+	mpz_mod(a_mod_n, a, n);
+	Polynomial* p_poly_right;
+	Polynomial* p_poly_left;
+	Polynomial* p_poly_left_base;
+	initialize_polynomial(&p_poly_right, power_right_ui);
+	set_polynomial_coef_si(p_poly_right, power_right_ui, 1);
+	set_polynomial_coef(p_poly_right, 0, &a_mod_n);
+	initialize_polynomial(&p_poly_left_base, 1);
+	set_polynomial_coef_si(p_poly_left_base, 1, 1);
+	set_polynomial_coef(p_poly_left_base, 0, &a);
+	polynomial_modular_power(&p_poly_left, p_poly_left_base, n, r_ui);
+	if (!is_equal_polynomial(p_poly_left, p_poly_right)) {
+	  is_return++;
+	}
+	mpz_clear(a_mod_n);
+	destroy_polynomial(&p_poly_right);
+	destroy_polynomial(&p_poly_left);
+	destroy_polynomial(&p_poly_left_base);
+      }
+      mpz_clear(a);
+    }
+    if (is_return > 0) {
+      mpz_clear(amax);
+      mpz_clear(b);
+      mpz_clear(bmax);
+      return COMPOSITE;
+    }
+    mpz_add_ui(b, b, 1);
+  }
+  mpz_clear(amax);
+  mpz_clear(b);
+  mpz_clear(bmax);
+#endif
+
+  /* Step 4: after all... */
   return PRIME;
 }
 
@@ -394,9 +453,12 @@ int main (int argc, char* argv[])
   mpz_t n;
   mpz_init(n);
   while (fscanf(fp, "%s", n_str) != EOF) {
+    clock_t start = clock();
     mpz_set_str(n, n_str, 10);
     gmp_printf("%Zd: ", n);
     printf("%d\n", aks(n));
+    printf("Time: %f\n", 
+	   (double)(clock() - start) / (double)CLOCKS_PER_SEC);
   }
   mpz_clear(n);
   fclose(fp);
