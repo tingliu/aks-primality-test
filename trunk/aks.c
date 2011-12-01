@@ -56,24 +56,6 @@ typedef struct {
 
 
 
-/* /\* For debug *\/ */
-/* void db_print_coef (Polynomial* p_poly) */
-/* { */
-/*   unsigned int i; */
-/*   for (i = 0; i <= p_poly->deg; i++) { */
-/*     printf("%d ", mpz_get_si(p_poly->coef[i])); */
-/*   } */
-/*   printf("\n"); */
-/* } */
-
-/* void db_print_var (mpz_t n) */
-/* { */
-/*   printf("%d\n", mpz_get_si(n)); */
-/* } */
-/* /\* ~For debug *\/ */
-
-
-
 void initialize_polynomial (Polynomial** pp_poly, unsigned int deg)
 {
   (*pp_poly) = (Polynomial*)malloc(sizeof(Polynomial));
@@ -152,7 +134,7 @@ inline void get_polynomial_coef (mpz_t* p_coef,
     mpz_init_set_ui(*p_coef, 0);
     return;
   }
-  mpz_init_set(*p_coef, p_poly->coef[order]);
+  mpz_set(*p_coef, p_poly->coef[order]);
 }
 
 
@@ -197,77 +179,33 @@ void polynomial_modular_multiplication (Polynomial** pp_poly_res,
   mpz_init(coef);
   unsigned int i;
   for (i = 0; i < r; i++) {	/* For every result coefficient */
-    /* /\* For debug *\/ */
-    /* printf("i = %d\n", i); */
-    /* /\* ~For debug *\/ */
-
     mpz_set_ui(coef, 0);
+    mpz_t c0, c1;
+    mpz_init(c0);
+    mpz_init(c1);
     unsigned int jmin = i > p_poly1->deg? i - p_poly1->deg: 0;
     unsigned int jmax = i < p_poly0->deg? i: p_poly0->deg;
     unsigned int j;
     for (j = jmin; j <= jmax; j++) { /* For all a(j) * b(i - j) */
-      mpz_t c0, c1;
       get_polynomial_coef(&c0, p_poly0, j);
       get_polynomial_coef(&c1, p_poly1, i - j);
-
-      /* /\* For debug *\/ */
-      /* printf("c0 = "); */
-      /* db_print_var(c0); */
-      /* printf("c1 = "); */
-      /* db_print_var(c1); */
-      /* /\* ~For debug *\/ */
-
       mpz_mul(c0, c0, c1);
       mpz_add(coef, c0, coef);	/* coef += c0 * c1 */
-      mpz_clear(c0);
-      mpz_clear(c1);
     }
-
-    /* /\* For debug *\/ */
-    /* printf("coef = "); */
-    /* db_print_var(coef); */
-    /* /\* ~For debug *\/ */
-
     jmin = i + r - p_poly1->deg;
     jmax = p_poly0->deg;
     for (j = jmin; j <= jmax; j++) { /* For all a(j) * b(i - j + r) */
-      mpz_t c0, c1;
       get_polynomial_coef(&c0, p_poly0, j);
       get_polynomial_coef(&c1, p_poly1, i + r - j);
-
-      /* /\* For debug *\/ */
-      /* printf("c0 = "); */
-      /* db_print_var(c0); */
-      /* printf("c1 = "); */
-      /* db_print_var(c1); */
-      /* /\* ~For debug *\/ */
-
       mpz_mul(c0, c0, c1);
       mpz_add(coef, c0, coef);	/* coef += c0 * c1 */
-      mpz_clear(c0);
-      mpz_clear(c1);
     }
-
-    /* /\* For debug *\/ */
-    /* printf("coef = "); */
-    /* db_print_var(coef); */
-    /* /\* ~For debug *\/ */
-    
+    mpz_clear(c0);
+    mpz_clear(c1);
     mpz_mod(coef, coef, n);	/* coef = coef % n */
-
-    /* /\* For debug *\/ */
-    /* printf("coef = "); */
-    /* db_print_var(coef); */
-    /* /\* ~For debug *\/ */
-
     if (mpz_cmp_ui(coef, 0) != 0) {
       set_polynomial_coef((*pp_poly_res), i, &coef);
     }
-
-    /* /\* For debug *\/ */
-    /* db_print_coef(*pp_poly_res); */
-    /* /\* ~For debug *\/ */
-
   }
   compact_polynomial((*pp_poly_res));
   mpz_clear(coef);
@@ -281,30 +219,15 @@ void polynomial_modular_power (Polynomial** pp_poly_res, Polynomial* p_poly_base
 {
   initialize_polynomial(pp_poly_res, 0);
   set_polynomial_coef_si((*pp_poly_res), 0, 1);
-
-  /* /\* For debug *\/ */
-  /* db_print_coef(*pp_poly_res); */
-  /* /\* ~For debug *\/ */
-  
   Polynomial* p_poly_temp = NULL;
   unsigned int i;
   for (i = mpz_sizeinbase(n, 2) + 1; i> 0; ) {
     clone_polynomial(&p_poly_temp, (*pp_poly_res));
     polynomial_modular_multiplication(pp_poly_res, p_poly_temp, p_poly_temp, n, r);
-
-    /* /\* For debug *\/ */
-    /* db_print_coef(*pp_poly_res); */
-    /* /\* ~For debug *\/ */
-
     destroy_polynomial(&p_poly_temp);
     if (mpz_tstbit(n, --i) == 1) {
       clone_polynomial(&p_poly_temp, (*pp_poly_res));
       polynomial_modular_multiplication(pp_poly_res, p_poly_temp, p_poly_base, n, r);
-
-      /* /\* For debug *\/ */
-      /* db_print_coef(*pp_poly_res); */
-      /* /\* ~For debug *\/ */
-
       destroy_polynomial(&p_poly_temp);
     }
   }
@@ -333,6 +256,10 @@ int aks (mpz_t n)
   initialize_sieve(&sieve);
   while (mpz_cmp(r, n) < 0) {
     if (mpz_divisible_p(n, r)) {
+      mpz_clear(r);
+      mpz_clear(logn);
+      mpz_clear(imax);
+      destroy_sieve(&sieve);
       return COMPOSITE;
     }
     if (sieve_primality_test(r_ui, &sieve) == PRIME) {
@@ -362,6 +289,8 @@ int aks (mpz_t n)
   mpz_clear(imax);
   destroy_sieve(&sieve);
   if (mpz_cmp(r, n) == 0) {
+    mpz_clear(r);
+    mpz_clear(logn);
     return PRIME;
   }
   /* Step 3: polynomial check */
@@ -396,30 +325,24 @@ int aks (mpz_t n)
     set_polynomial_coef(p_poly_right, 0, &a_mod_n); /* X ^ (n % r) + a % n */
     set_polynomial_coef(p_poly_left_base, 0, &a); /* X + a */
     polynomial_modular_power(&p_poly_left, p_poly_left_base, n, r_ui);
-
-    /* /\* For debug *\/ */
-    /* db_print_var(a); */
-    /* db_print_coef(p_poly_left_base); */
-    /* db_print_coef(p_poly_left); */
-    /* db_print_coef(p_poly_right); */
-    /* /\* ~For debug *\/ */
-
     if (!is_equal_polynomial(p_poly_left, p_poly_right)) {
       destroy_polynomial(&p_poly_left);
       destroy_polynomial(&p_poly_right);
       destroy_polynomial(&p_poly_left_base);
-      mpz_clear(a);
       mpz_clear(amax);
+      mpz_clear(a);
+      mpz_clear(a_mod_n);
       return COMPOSITE;
     }
     destroy_polynomial(&p_poly_left);
     mpz_add_ui(a, a, 1);
   }
+  /* Step 4: after all... */
   destroy_polynomial(&p_poly_right);
   destroy_polynomial(&p_poly_left_base);
+  mpz_clear(amax);
   mpz_clear(a);
-  mpz_clear(amax);  
-  /* Step 4: after all... */
+  mpz_clear(a_mod_n);
   return PRIME;
 }
 
@@ -430,6 +353,7 @@ int aks (mpz_t n)
 /*   mpz_t n; */
 /*   mpz_init_set_str(n, argv[1], 10); */
 /*   printf("%d\n", aks(n)); */
+/*   mpz_clear(n); */
 /*   return 0; */
 /* } */
 
@@ -442,9 +366,8 @@ int aks (mpz_t n)
 /*   mpz_t n; */
 /*   mpz_init_set_str(n, n_str, 10); */
 /*   gmp_printf("%Zd\n", n); */
-/*   int p = aks(n); */
+/*   printf("%d\n", aks(n)); */
 /*   mpz_clear(n); */
-/*   printf("%d\n", p); */
 /*   return 0; */
 /* } */
 
@@ -461,6 +384,7 @@ int main (int argc, char* argv[])
     gmp_printf("%Zd: ", n);
     printf("%d\n", aks(n));
   }
+  mpz_clear(n);
   fclose(fp);
   return 0;
 }
