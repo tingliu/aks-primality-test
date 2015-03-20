@@ -370,9 +370,10 @@ int aks (mpz_t n)
   mpz_cdiv_q_ui(bmax, amax, THREAD_NUM);
   mpz_sub_ui(bmax, bmax, 1);
   while (mpz_cmp(b, bmax) <= 0) {
-    unsigned int is_return = 0;
+    unsigned int is_returns[THREAD_NUM];
     unsigned int c;
-#pragma omp parallel private(c) shared(is_return)
+    for (c = 0; c < THREAD_NUM; ++c) { is_returns[c] = 0; }
+#pragma omp parallel
     for (c = 0; c < THREAD_NUM; c++) {
       mpz_t a;
       mpz_init(a);
@@ -393,7 +394,7 @@ int aks (mpz_t n)
 	set_polynomial_coef(p_poly_left_base, 0, &a);
 	polynomial_modular_power(&p_poly_left, p_poly_left_base, n, r_ui);
 	if (!is_equal_polynomial(p_poly_left, p_poly_right)) {
-	  is_return++;
+	  is_returns[c] = 1;
 	}
 	mpz_clear(a_mod_n);
 	destroy_polynomial(&p_poly_right);
@@ -402,6 +403,8 @@ int aks (mpz_t n)
       }
       mpz_clear(a);
     }
+    unsigned int is_return = 0;
+    for (c = 0; c < THREAD_NUM; ++c) { is_return += is_returns[c]; }
     if (is_return > 0) {
       mpz_clear(amax);
       mpz_clear(b);
