@@ -365,9 +365,7 @@ int aks (mpz_t n)
   mpz_clear(a_mod_n);
 #else
   mpz_t a;
-#ifdef USE_PARALLEL
 #pragma omp parallel private(a)
-#endif
 {
   mpz_init_set_ui(a, omp_get_thread_num());
 
@@ -386,9 +384,7 @@ int aks (mpz_t n)
     set_polynomial_coef(p_poly_left_base, 0, &a);
     polynomial_modular_power(&p_poly_left, p_poly_left_base, n, r_ui);
     if (!is_equal_polynomial(p_poly_left, p_poly_right)) {
-      #ifdef USE_PARALLEL
       #pragma omp atomic
-      #endif
       is_returns++;
     }
     mpz_clear(a_mod_n);
