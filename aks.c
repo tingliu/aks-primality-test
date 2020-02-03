@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
 #include <gmp.h>
 
 #define COMPOSITE 0
@@ -8,7 +7,9 @@
 
 #define USE_PARALLEL
 #ifdef USE_PARALLEL
-#define THREAD_NUM 2
+#include <omp.h>
+#else
+#include <time.h>
 #endif
 
 typedef struct {
@@ -138,7 +139,7 @@ int is_equal_polynomial (Polynomial* p_poly0, Polynomial* p_poly1)
 
 
 
-inline void get_polynomial_coef (mpz_t* p_coef, 
+static inline void get_polynomial_coef (mpz_t* p_coef, 
 				 Polynomial* p_poly, unsigned int order)
 {
   if (order > p_poly->deg) {
@@ -151,7 +152,7 @@ inline void get_polynomial_coef (mpz_t* p_coef,
 
 
 void set_polynomial_coef (Polynomial* p_poly, unsigned int order, 
-			  mpz_t* p_coef)
+			  const mpz_t* p_coef)
 {
   if (order <= p_poly->deg) {
     mpz_set(p_poly->coef[order], *p_coef);
@@ -363,63 +364,41 @@ int aks (mpz_t n)
   mpz_clear(a);
   mpz_clear(a_mod_n);
 #else
-  mpz_t b;
-  mpz_init(b);
-  mpz_t bmax;
-  mpz_init(bmax);
-  mpz_cdiv_q_ui(bmax, amax, THREAD_NUM);
-  mpz_sub_ui(bmax, bmax, 1);
-  while (mpz_cmp(b, bmax) <= 0) {
-    unsigned int is_returns[THREAD_NUM];
-    unsigned int c;
-    for (c = 0; c < THREAD_NUM; ++c) { is_returns[c] = 0; }
-#pragma omp parallel
-    for (c = 0; c < THREAD_NUM; c++) {
-      mpz_t a;
-      mpz_init(a);
-      mpz_mul_ui(a, b, THREAD_NUM);
-      mpz_add_ui(a, a, c);		/* a = b * THREAD_NUM + c */
-      if (mpz_cmp(a, amax) <= 0) {
-	mpz_t a_mod_n;
-	mpz_init(a_mod_n);
-	mpz_mod(a_mod_n, a, n);
-	Polynomial* p_poly_right;
-	Polynomial* p_poly_left;
-	Polynomial* p_poly_left_base;
-	initialize_polynomial(&p_poly_right, power_right_ui);
-	set_polynomial_coef_si(p_poly_right, power_right_ui, 1);
-	set_polynomial_coef(p_poly_right, 0, &a_mod_n);
-	initialize_polynomial(&p_poly_left_base, 1);
-	set_polynomial_coef_si(p_poly_left_base, 1, 1);
-	set_polynomial_coef(p_poly_left_base, 0, &a);
-	polynomial_modular_power(&p_poly_left, p_poly_left_base, n, r_ui);
-	if (!is_equal_polynomial(p_poly_left, p_poly_right)) {
-	  is_returns[c] = 1;
-	}
-	mpz_clear(a_mod_n);
-	destroy_polynomial(&p_poly_right);
-	destroy_polynomial(&p_poly_left);
-	destroy_polynomial(&p_poly_left_base);
-      }
-      mpz_clear(a);
+  unsigned int is_returns = 0;
+  mpz_t a;
+#pragma omp parallel private(a)
+{
+  mpz_init_set_ui(a, omp_get_thread_num());
+
+  for (; is_returns == 0 && mpz_cmp(a, amax) < 0; mpz_add_ui(a, a, omp_get_num_threads())) {
+    mpz_t a_mod_n;
+    mpz_init(a_mod_n);
+    mpz_mod(a_mod_n, a, n);
+    Polynomial* p_poly_right;
+    Polynomial* p_poly_left;
+    Polynomial* p_poly_left_base;
+    initialize_polynomial(&p_poly_right, power_right_ui);
+    set_polynomial_coef_si(p_poly_right, power_right_ui, 1);
+    set_polynomial_coef(p_poly_right, 0, &a_mod_n);
+    initialize_polynomial(&p_poly_left_base, 1);
+    set_polynomial_coef_si(p_poly_left_base, 1, 1);
+    set_polynomial_coef(p_poly_left_base, 0, &a);
+    polynomial_modular_power(&p_poly_left, p_poly_left_base, n, r_ui);
+    if (!is_equal_polynomial(p_poly_left, p_poly_right)) {
+      #pragma omp atomic
+      is_returns++;
     }
-    unsigned int is_return = 0;
-    for (c = 0; c < THREAD_NUM; ++c) { is_return += is_returns[c]; }
-    if (is_return > 0) {
-      mpz_clear(amax);
-      mpz_clear(b);
-      mpz_clear(bmax);
-      return COMPOSITE;
-    }
-    mpz_add_ui(b, b, 1);
-  }
+    mpz_clear(a_mod_n);
+    destroy_polynomial(&p_poly_right);
+    destroy_polynomial(&p_poly_left);
+    destroy_polynomial(&p_poly_left_base);
+  } /* end while a */
+} /* end omp parallel block */
   mpz_clear(amax);
-  mpz_clear(b);
-  mpz_clear(bmax);
 #endif
 
   /* Step 4: after all... */
-  return PRIME;
+  return is_returns > 0 ? COMPOSITE : PRIME;
 }
 
 
@@ -449,21 +428,36 @@ int aks (mpz_t n)
 
 
 
-int main (int argc, char* argv[])
+int main (int argc __attribute__((unused)), char* argv[])
 {
+  int stats[2];
+  int res;
   char n_str[1000];
+  stats[COMPOSITE] = stats[PRIME] = 0;
   FILE* fp = fopen(argv[1], "r");
   mpz_t n;
   mpz_init(n);
   while (fscanf(fp, "%s", n_str) != EOF) {
+    #ifdef USE_PARALLEL
+    double elapsed_time = omp_get_wtime();
+    #else
     clock_t start = clock();
+    #endif
     mpz_set_str(n, n_str, 10);
     gmp_printf("%Zd: ", n);
-    printf("%d\n", aks(n));
-    printf("Time: %f\n", 
-	   (double)(clock() - start) / (double)CLOCKS_PER_SEC);
+    res = aks(n);
+    printf("%d\n", res);
+    stats[res]++;
+    printf("Time: %f\n",
+    #ifdef USE_PARALLEL
+          omp_get_wtime() - elapsed_time
+    #else
+          (double)(clock() - start) / (double)CLOCKS_PER_SEC
+    #endif
+          );
   }
   mpz_clear(n);
   fclose(fp);
+  printf("%-10s: %4d\n%-10s: %4d\n", "PRIME", stats[PRIME], "COMPOSITE", stats[COMPOSITE]);
   return 0;
 }
