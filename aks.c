@@ -5,7 +5,6 @@
 #define COMPOSITE 0
 #define PRIME 1
 
-#define USE_PARALLEL
 #ifdef USE_PARALLEL
 #include <omp.h>
 #else
@@ -329,6 +328,7 @@ int aks (mpz_t n)
   unsigned int power_right_ui = mpz_get_ui(power_right);
   mpz_clear(r);
   mpz_clear(power_right);
+  unsigned int is_returns = 0;
 #ifndef USE_PARALLEL
   Polynomial* p_poly_right;
   Polynomial* p_poly_left; 
@@ -364,9 +364,10 @@ int aks (mpz_t n)
   mpz_clear(a);
   mpz_clear(a_mod_n);
 #else
-  unsigned int is_returns = 0;
   mpz_t a;
+#ifdef USE_PARALLEL
 #pragma omp parallel private(a)
+#endif
 {
   mpz_init_set_ui(a, omp_get_thread_num());
 
@@ -385,7 +386,9 @@ int aks (mpz_t n)
     set_polynomial_coef(p_poly_left_base, 0, &a);
     polynomial_modular_power(&p_poly_left, p_poly_left_base, n, r_ui);
     if (!is_equal_polynomial(p_poly_left, p_poly_right)) {
+      #ifdef USE_PARALLEL
       #pragma omp atomic
+      #endif
       is_returns++;
     }
     mpz_clear(a_mod_n);

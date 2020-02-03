@@ -18,7 +18,7 @@ endif
 endif
 
 ifeq ($(PARALLEL),true)
-CFLAGS += -fopenmp
+CFLAGS += -fopenmp -DUSE_PARALLEL
 LDFLAGS += -fopenmp
 endif
 
