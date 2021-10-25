@@ -3,7 +3,7 @@ BUILD ?= perf
 PARALLEL ?= true
 
 CFLAGS = -Wall -Werror -Wextra
-LDFLAGS = -lgmp
+LDLIBS = -lgmp
 
 ifeq ($(BUILD),debug)
 CFLAGS += -g
